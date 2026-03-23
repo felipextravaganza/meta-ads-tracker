@@ -489,18 +489,21 @@
       <div class="stat-value" id="s-update" style="color:#7a9aff">—</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Eliminaciones</div>
-      <div class="stat-value" id="s-delete" style="color:var(--danger)">—</div>
+      <div class="stat-label">Activaciones/pausas</div>
+      <div class="stat-value" id="s-delete" style="color:var(--warn)">—</div>
     </div>
   </div>
 
   <div id="filters-row" style="display:none;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
     <input type="text" id="search-input" placeholder="Buscar por nombre o tipo..." oninput="renderFiltered()">
     <select id="type-filter" onchange="renderFiltered()">
-      <option value="">Todos los tipos</option>
+      <option value="">Todos</option>
+      <option value="campaña">Campañas</option>
+      <option value="conjunto">Conjuntos</option>
+      <option value="anuncio">Anuncios</option>
       <option value="create">Solo creaciones</option>
-      <option value="update">Solo actualizaciones</option>
-      <option value="delete">Solo eliminaciones</option>
+      <option value="update">Solo presupuesto/público</option>
+      <option value="toggle">Solo activaciones/pausas</option>
     </select>
   </div>
 
@@ -523,25 +526,73 @@
 <script>
 let allData = [];
 
-function getEventKind(eventType) {
-  if (!eventType) return 'other';
-  const t = eventType.toLowerCase();
-  if (t.includes('create') || t.includes('add')) return 'create';
-  if (t.includes('delete') || t.includes('remove')) return 'delete';
-  if (t.includes('update') || t.includes('edit') || t.includes('change') || t.includes('set')) return 'update';
-  return 'other';
+// ── Categorías relevantes ──────────────────────────────────────────────────
+// Cada entrada: { match: fn(eventType) => bool, label, category, kind }
+const RELEVANT_EVENTS = [
+  // Campañas
+  { match: t => t === 'create_campaign',          label: 'Nueva campaña creada',        category: 'campaña',   kind: 'create' },
+  { match: t => t === 'update_campaign_run_status' || t === 'update_campaign_status', label: 'Campaña activada / pausada', category: 'campaña', kind: 'toggle' },
+  // Conjuntos de anuncios
+  { match: t => t === 'create_ad_set',            label: 'Nuevo conjunto creado',       category: 'conjunto',  kind: 'create' },
+  { match: t => t === 'update_ad_set_run_status' || t === 'update_adset_status', label: 'Conjunto activado / pausado', category: 'conjunto', kind: 'toggle' },
+  { match: t => t === 'update_ad_set_budget' || t === 'update_adset_budget' || (t.includes('adset') && t.includes('budget')) || (t.includes('ad_set') && t.includes('budget')), label: 'Presupuesto actualizado', category: 'conjunto', kind: 'update' },
+  { match: t => t.includes('targeting') || t.includes('audience') || t.includes('publico'), label: 'Público actualizado', category: 'conjunto', kind: 'update' },
+  // Anuncios
+  { match: t => t === 'create_ad',                label: 'Nuevo anuncio creado',        category: 'anuncio',   kind: 'create' },
+  { match: t => t === 'update_ad_run_status' || t === 'update_ad_status', label: 'Anuncio activado / pausado', category: 'anuncio', kind: 'toggle' },
+];
+
+// Palabras clave adicionales para capturar variaciones no documentadas
+const BUDGET_KEYWORDS  = ['budget', 'presupuesto', 'spend', 'bid', 'daily', 'lifetime'];
+const AUDIENCE_KEYWORDS = ['targeting', 'audience', 'custom_audience', 'lookalike', 'geo', 'age', 'gender', 'placement', 'interest'];
+const STATUS_KEYWORDS   = ['status', 'run_status', 'active', 'paused', 'enabled', 'disabled'];
+
+function classifyEvent(item) {
+  const t = (item.event_type || '').toLowerCase();
+  const isHuman = !!item.actor_name; // Meta no pone actor_name en cambios automáticos
+
+  // Excluir cambios automáticos de Meta (sin actor humano)
+  if (!isHuman) return null;
+
+  // Probar reglas exactas primero
+  for (const rule of RELEVANT_EVENTS) {
+    if (rule.match(t)) return rule;
+  }
+
+  // Fallback: detectar por palabras clave en el event_type
+  const isCreate = t.startsWith('create_');
+  const isUpdate = t.startsWith('update_') || t.startsWith('edit_');
+  const isCampaign  = t.includes('campaign');
+  const isAdSet     = t.includes('ad_set') || t.includes('adset');
+  const isAd        = t.includes('_ad') && !isAdSet && !isCampaign;
+  const isBudget    = BUDGET_KEYWORDS.some(k => t.includes(k));
+  const isAudience  = AUDIENCE_KEYWORDS.some(k => t.includes(k));
+  const isStatus    = STATUS_KEYWORDS.some(k => t.includes(k));
+
+  if (isCreate && isCampaign)  return { label: 'Nueva campaña creada',    category: 'campaña',  kind: 'create' };
+  if (isCreate && isAdSet)     return { label: 'Nuevo conjunto creado',   category: 'conjunto', kind: 'create' };
+  if (isCreate && isAd)        return { label: 'Nuevo anuncio creado',    category: 'anuncio',  kind: 'create' };
+  if (isUpdate && isBudget)    return { label: 'Presupuesto actualizado', category: 'conjunto', kind: 'update' };
+  if (isUpdate && isAudience)  return { label: 'Público actualizado',     category: 'conjunto', kind: 'update' };
+  if (isUpdate && isStatus)    return { label: 'Activado / pausado',      category: isCampaign ? 'campaña' : isAdSet ? 'conjunto' : 'anuncio', kind: 'toggle' };
+
+  // No es relevante
+  return null;
 }
 
-function kindColor(kind) {
-  return { create: '#3ecf8e', update: '#7a9aff', delete: '#ef7070', other: '#7a788f' }[kind] || '#7a788f';
-}
-
-function friendlyEventType(type) {
-  if (!type) return 'Cambio';
-  return type
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase());
-}
+const KIND_COLOR = {
+  create: '#3ecf8e',
+  update: '#7a9aff',
+  toggle: '#f5a623',
+  delete: '#ef7070',
+};
+const KIND_LABEL = {
+  create: 'creado',
+  update: 'actualizado',
+  toggle: 'estado',
+  delete: 'eliminado',
+};
+const CAT_ICON = { campaña: '📢', conjunto: '🎯', anuncio: '🖼' };
 
 function formatTime(ts) {
   if (!ts) return '—';
@@ -553,25 +604,38 @@ function formatTime(ts) {
 function parseExtraData(extra) {
   if (!extra) return [];
   let obj = extra;
-  if (typeof extra === 'string') {
-    try { obj = JSON.parse(extra); } catch { return []; }
-  }
+  if (typeof extra === 'string') { try { obj = JSON.parse(extra); } catch { return []; } }
   const rows = [];
+  // Labels amigables para campos comunes
+  const FIELD_LABELS = {
+    daily_budget: 'Presupuesto diario',
+    lifetime_budget: 'Presupuesto total',
+    bid_amount: 'Puja',
+    status: 'Estado',
+    run_status: 'Estado',
+    name: 'Nombre',
+    targeting: 'Targeting',
+    start_time: 'Inicio',
+    end_time: 'Fin',
+  };
   for (const [k, v] of Object.entries(obj)) {
     if (k === 'old_value' || k === 'new_value') continue;
+    const label = FIELD_LABELS[k] || k.replace(/_/g, ' ');
     if (typeof v === 'object' && v !== null && 'old_value' in v) {
-      rows.push({ field: k, old: String(v.old_value ?? '—'), new: String(v.new_value ?? '—') });
+      rows.push({ field: label, old: String(v.old_value ?? '—'), new: String(v.new_value ?? '—') });
     } else {
-      rows.push({ field: k, old: null, new: String(v) });
+      rows.push({ field: label, old: null, new: String(v) });
     }
   }
   return rows;
 }
 
 function renderItem(item, index) {
-  const kind = getEventKind(item.event_type);
-  const color = kindColor(kind);
+  const cls = classifyEvent(item);
+  if (!cls) return '';
+  const color = KIND_COLOR[cls.kind] || '#7a788f';
   const rows = parseExtraData(item.extra_data);
+  const icon = CAT_ICON[cls.category] || '•';
 
   let diffHtml = '';
   if (rows.length > 0) {
@@ -582,19 +646,18 @@ function renderItem(item, index) {
         <td>${r.field}</td>
         <td>${r.old !== null ? `<span class="val-old">${r.old}</span>` : '<span style="color:var(--muted2)">—</span>'}</td>
         <td>${r.old !== null ? `<span class="val-new">${r.new}</span>` : `<span style="color:var(--muted)">${r.new}</span>`}</td>
-      </tr>`).join('') +
-      `</tbody></table>`;
+      </tr>`).join('') + `</tbody></table>`;
   } else {
-    diffHtml = `<span style="font-family:var(--font-mono);font-size:11px;color:var(--muted2)">Sin detalles adicionales disponibles.</span>`;
+    diffHtml = `<span style="font-family:var(--font-mono);font-size:11px;color:var(--muted2)">Sin detalles adicionales.</span>`;
   }
 
   return `<div class="activity-item" onclick="toggleItem(this)" data-index="${index}">
-    <div class="event-dot" style="background:${color};box-shadow:0 0 6px ${color}55;"></div>
+    <div class="event-dot" style="background:${color};box-shadow:0 0 6px ${color}55;margin-top:6px;"></div>
     <div class="event-body">
       <div class="event-name">${item.object_name || item.object_id || 'Sin nombre'}</div>
       <div class="event-detail">
-        <span class="event-badge badge-${kind}">${kind === 'other' ? 'cambio' : kind === 'create' ? 'creado' : kind === 'update' ? 'actualizado' : 'eliminado'}</span>
-        <span>${friendlyEventType(item.event_type)}</span>
+        <span class="event-badge badge-${cls.kind === 'toggle' ? 'other' : cls.kind}" style="background:${color}22;color:${color};">${KIND_LABEL[cls.kind]}</span>
+        <span>${icon} ${cls.label}</span>
         ${item.actor_name ? `<span style="color:var(--muted2)">por ${item.actor_name}</span>` : ''}
       </div>
       <div class="event-expanded">${diffHtml}</div>
@@ -603,22 +666,23 @@ function renderItem(item, index) {
   </div>`;
 }
 
-function toggleItem(el) {
-  el.classList.toggle('open');
+function toggleItem(el) { el.classList.toggle('open'); }
+
+function getRelevant() {
+  return allData.filter(item => classifyEvent(item) !== null);
 }
 
 function renderFiltered() {
   const search = document.getElementById('search-input').value.toLowerCase();
-  const typeF = document.getElementById('type-filter').value;
-  const list = document.getElementById('activity-list');
-  const empty = document.getElementById('empty-state');
+  const typeF  = document.getElementById('type-filter').value;
+  const list   = document.getElementById('activity-list');
+  const empty  = document.getElementById('empty-state');
 
-  const filtered = allData.filter(item => {
+  const filtered = getRelevant().filter(item => {
+    const cls  = classifyEvent(item);
     const name = (item.object_name || item.object_id || '').toLowerCase();
-    const etype = (item.event_type || '').toLowerCase();
-    const matchSearch = !search || name.includes(search) || etype.includes(search);
-    const kind = getEventKind(item.event_type);
-    const matchType = !typeF || kind === typeF;
+    const matchSearch = !search || name.includes(search) || cls.label.toLowerCase().includes(search) || cls.category.includes(search);
+    const matchType   = !typeF  || cls.category === typeF || cls.kind === typeF;
     return matchSearch && matchType;
   });
 
@@ -632,60 +696,58 @@ function renderFiltered() {
 }
 
 async function fetchActivity() {
-  const token = document.getElementById('token-input').value.trim();
+  const token   = document.getElementById('token-input').value.trim();
   const account = document.getElementById('account-input').value.trim();
-  const days = parseInt(document.getElementById('period-select').value);
-  const limit = document.getElementById('limit-select').value;
+  const days    = parseInt(document.getElementById('period-select').value);
+  const limit   = document.getElementById('limit-select').value;
 
-  if (!token || !account) {
-    showError('Por favor ingresa el Access Token y el ID de la cuenta.');
-    return;
-  }
+  if (!token || !account) { showError('Por favor ingresa el Access Token y el ID de la cuenta.'); return; }
 
   const accountId = account.startsWith('act_') ? account : 'act_' + account;
   const since = Math.floor(Date.now() / 1000) - days * 86400;
   const until = Math.floor(Date.now() / 1000);
 
-  setLoading(true);
-  hideError();
+  setLoading(true); hideError();
 
   const fields = 'event_type,object_id,object_name,event_time,extra_data,actor_name';
   const url = `https://graph.facebook.com/v19.0/${accountId}/activities?fields=${fields}&since=${since}&until=${until}&limit=${limit}&access_token=${token}`;
 
   try {
-    const res = await fetch(url);
+    const res  = await fetch(url);
     const json = await res.json();
 
     if (json.error) {
       showError(`Error de Meta API: ${json.error.message} (código ${json.error.code})`);
-      setLoading(false);
-      return;
+      setLoading(false); return;
     }
 
     allData = json.data || [];
+    const relevant = getRelevant();
 
-    if (allData.length === 0) {
-      showError('No se encontraron actividades en el período seleccionado. Prueba con un rango más amplio.');
-      setLoading(false);
-      return;
+    if (relevant.length === 0) {
+      showError('No se encontraron cambios humanos relevantes en el período. Meta filtró todo como automático, o no hubo actividad manual.');
+      setLoading(false); return;
     }
 
-    // Stats
-    const creates = allData.filter(x => getEventKind(x.event_type) === 'create').length;
-    const updates = allData.filter(x => getEventKind(x.event_type) === 'update').length;
-    const deletes = allData.filter(x => getEventKind(x.event_type) === 'delete').length;
+    // Stats sobre los eventos relevantes
+    const creates = relevant.filter(x => classifyEvent(x).kind === 'create').length;
+    const updates = relevant.filter(x => classifyEvent(x).kind === 'update').length;
+    const toggles = relevant.filter(x => classifyEvent(x).kind === 'toggle').length;
 
-    document.getElementById('s-total').textContent = allData.length;
+    document.getElementById('s-total').textContent  = relevant.length;
     document.getElementById('s-create').textContent = creates;
     document.getElementById('s-update').textContent = updates;
-    document.getElementById('s-delete').textContent = deletes;
+    document.getElementById('s-delete').textContent = toggles;
 
-    document.getElementById('stats-bar').style.display = 'grid';
+    // Renombrar la última stat a "Estados"
+    document.querySelector('#stats-bar .stat-card:last-child .stat-label').textContent = 'Activaciones/pausas';
+
+    document.getElementById('stats-bar').style.display   = 'grid';
     document.getElementById('filters-row').style.display = 'flex';
-    document.getElementById('results').style.display = 'block';
-    document.getElementById('export-row').style.display = 'flex';
+    document.getElementById('results').style.display     = 'block';
+    document.getElementById('export-row').style.display  = 'flex';
     document.getElementById('results-label').textContent =
-      `${allData.length} cambios · últimos ${days} días`;
+      `${relevant.length} cambios humanos relevantes · últimos ${days} días`;
 
     renderFiltered();
 
@@ -697,41 +759,32 @@ async function fetchActivity() {
 }
 
 function setLoading(v) {
-  document.getElementById('loader').style.display = v ? 'flex' : 'none';
-  document.getElementById('fetch-btn').disabled = v;
+  document.getElementById('loader').style.display  = v ? 'flex' : 'none';
+  document.getElementById('fetch-btn').disabled    = v;
 }
-
 function showError(msg) {
   const el = document.getElementById('error-box');
-  el.textContent = msg;
-  el.style.display = 'block';
+  el.textContent = msg; el.style.display = 'block';
 }
-
-function hideError() {
-  document.getElementById('error-box').style.display = 'none';
-}
+function hideError() { document.getElementById('error-box').style.display = 'none'; }
 
 function exportCSV() {
-  const headers = ['event_type', 'object_name', 'object_id', 'actor_name', 'event_time'];
-  const rows = allData.map(item =>
-    headers.map(h => {
-      let v = h === 'event_time' ? formatTime(item[h]) : (item[h] || '');
-      return `"${String(v).replace(/"/g, '""')}"`;
-    }).join(',')
-  );
-  const csv = [headers.join(','), ...rows].join('\n');
-  download('meta_ads_actividad.csv', 'text/csv', csv);
+  const relevant = getRelevant();
+  const headers  = ['categoria', 'accion', 'nombre', 'actor', 'fecha'];
+  const rows = relevant.map(item => {
+    const cls = classifyEvent(item);
+    return [cls.category, cls.label, item.object_name || item.object_id || '', item.actor_name || '', formatTime(item.event_time)]
+      .map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+  });
+  download('meta_ads_cambios.csv', 'text/csv', [headers.join(','), ...rows].join('\n'));
 }
-
 function exportJSON() {
-  download('meta_ads_actividad.json', 'application/json', JSON.stringify(allData, null, 2));
+  download('meta_ads_cambios.json', 'application/json', JSON.stringify(getRelevant(), null, 2));
 }
-
 function download(filename, type, content) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([content], { type }));
-  a.download = filename;
-  a.click();
+  a.download = filename; a.click();
 }
 </script>
 </body>
