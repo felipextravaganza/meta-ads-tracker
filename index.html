@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meta Ads — Historial de Cambios</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --card: #16161f;
+    --border: rgba(255,255,255,0.07);
+    --border-strong: rgba(255,255,255,0.14);
+    --accent: #4f6ef7;
+    --accent-glow: rgba(79,110,247,0.18);
+    --accent2: #e05b8c;
+    --text: #f0eef8;
+    --muted: #7a788f;
+    --muted2: #4a4860;
+    --success: #3ecf8e;
+    --warn: #f5a623;
+    --danger: #ef5350;
+    --font-display: 'Syne', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-display);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(79,110,247,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(79,110,247,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  /* Header */
+  .header {
+    margin-bottom: 48px;
+  }
+  .header-tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-tag::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  h1 {
+    font-size: clamp(28px, 5vw, 44px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+  h1 span { color: var(--accent); }
+  .subtitle {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 15px;
+    font-weight: 400;
+  }
+
+  /* Form */
+  .form-card {
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    padding: 28px 28px 24px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .form-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2), transparent);
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+
+  .field label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .field input, .field select {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .field input:focus, .field select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  .field select option { background: var(--surface); }
+
+  .note {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+    padding: 10px 14px;
+    background: rgba(79,110,247,0.06);
+    border: 1px solid rgba(79,110,247,0.15);
+    border-radius: 8px;
+    margin-bottom: 20px;
+  }
+  .note a { color: var(--accent); text-decoration: none; }
+  .note a:hover { text-decoration: underline; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 28px;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+    letter-spacing: 0.02em;
+  }
+  .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--muted);
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .btn-outline:hover { border-color: var(--border-strong); color: var(--text); opacity: 1; }
+
+  /* Loader */
+  #loader {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 0;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border-strong);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Error */
+  #error-box {
+    display: none;
+    background: rgba(239,83,80,0.08);
+    border: 1px solid rgba(239,83,80,0.3);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: #f07070;
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+
+  /* Stats bar */
+  #stats-bar {
+    display: none;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  @media (max-width: 600px) { #stats-bar { grid-template-columns: repeat(2, 1fr); } }
+
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  /* Filters */
+  #filters-row {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  #search-input {
+    flex: 1;
+    min-width: 200px;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 9px 14px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #search-input:focus { border-color: var(--accent); }
+  #type-filter {
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    outline: none;
+    cursor: pointer;
+  }
+  #type-filter:focus { border-color: var(--accent); }
+
+  /* Results */
+  #results { display: none; }
+
+  .section-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .activity-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .activity-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 14px;
+    align-items: start;
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+  .activity-item:hover {
+    border-color: var(--border-strong);
+    background: #1a1a25;
+  }
+
+  .event-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+
+  .event-body { min-width: 0; }
+  .event-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+  .event-detail {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .event-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .badge-create  { background: rgba(62,207,142,0.12); color: #3ecf8e; }
+  .badge-update  { background: rgba(79,110,247,0.14); color: #7a9aff; }
+  .badge-delete  { background: rgba(239,83,80,0.12); color: #ef7070; }
+  .badge-other   { background: rgba(122,120,143,0.15); color: var(--muted); }
+
+  .event-time {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted2);
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  /* Expanded detail */
+  .event-expanded {
+    display: none;
+    grid-column: 1 / -1;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .activity-item.open .event-expanded { display: block; }
+  .diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .diff-table th {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 4px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-table td {
+    padding: 6px 10px;
+    vertical-align: top;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    color: var(--muted);
+  }
+  .diff-table td:first-child { color: var(--text); width: 35%; }
+  .val-old { color: var(--danger); opacity: 0.85; text-decoration: line-through; }
+  .val-new  { color: var(--success); }
+
+  #export-row {
+    display: none;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  #empty-state {
+    display: none;
+    text-align: center;
+    padding: 48px 0;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  #empty-state .big { font-size: 36px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="header-tag">Meta Ads · Activity Tracker</div>
+    <h1>Cambios en tu<br><span>cuenta publicitaria</span></h1>
+    <p class="subtitle">Visualiza todos los cambios de la última semana en segundos.</p>
+  </div>
+
+  <div class="form-card">
+    <div class="note">
+      <strong>¿Cómo obtener tu Access Token?</strong> Ve a <a href="https://developers.facebook.com/tools/explorer/" target="_blank">Graph API Explorer</a> → Selecciona tu app → Generate Token con permisos <code>ads_read</code> y <code>business_management</code>. El ID de cuenta empieza con <code>act_</code>.
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label>Access Token</label>
+        <input type="password" id="token-input" placeholder="EAABsbCS..." autocomplete="off">
+      </div>
+      <div class="field">
+        <label>ID de Cuenta (act_XXXXXXX)</label>
+        <input type="text" id="account-input" placeholder="act_123456789">
+      </div>
+      <div class="field">
+        <label>Período</label>
+        <select id="period-select">
+          <option value="7">Últimos 7 días</option>
+          <option value="14">Últimos 14 días</option>
+          <option value="30">Últimos 30 días</option>
+          <option value="1">Últimas 24 horas</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Límite de resultados</label>
+        <select id="limit-select">
+          <option value="100">100 cambios</option>
+          <option value="250">250 cambios</option>
+          <option value="500">500 cambios</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" id="fetch-btn" onclick="fetchActivity()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+      Cargar cambios
+    </button>
+  </div>
+
+  <div id="loader">
+    <div class="spinner"></div>
+    <span id="loader-text">Consultando la API de Meta...</span>
+  </div>
+
+  <div id="error-box"></div>
+
+  <div id="stats-bar" style="display:none;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px;">
+    <div class="stat-card">
+      <div class="stat-label">Total cambios</div>
+      <div class="stat-value" id="s-total" style="color:var(--text)">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Creaciones</div>
+      <div class="stat-value" id="s-create" style="color:var(--success)">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Actualizaciones</div>
+      <div class="stat-value" id="s-update" style="color:#7a9aff">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Eliminaciones</div>
+      <div class="stat-value" id="s-delete" style="color:var(--danger)">—</div>
+    </div>
+  </div>
+
+  <div id="filters-row" style="display:none;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+    <input type="text" id="search-input" placeholder="Buscar por nombre o tipo..." oninput="renderFiltered()">
+    <select id="type-filter" onchange="renderFiltered()">
+      <option value="">Todos los tipos</option>
+      <option value="create">Solo creaciones</option>
+      <option value="update">Solo actualizaciones</option>
+      <option value="delete">Solo eliminaciones</option>
+    </select>
+  </div>
+
+  <div id="results">
+    <div class="section-title" id="results-label">Historial de actividad</div>
+    <div class="activity-list" id="activity-list"></div>
+    <div id="empty-state">
+      <div class="big">🔍</div>
+      Sin resultados para ese filtro.
+    </div>
+  </div>
+
+  <div id="export-row" style="display:none;justify-content:flex-end;gap:10px;margin-top:20px;">
+    <button class="btn btn-outline" onclick="exportCSV()">Exportar CSV</button>
+    <button class="btn btn-outline" onclick="exportJSON()">Exportar JSON</button>
+  </div>
+
+</div>
+
+<script>
+let allData = [];
+
+function getEventKind(eventType) {
+  if (!eventType) return 'other';
+  const t = eventType.toLowerCase();
+  if (t.includes('create') || t.includes('add')) return 'create';
+  if (t.includes('delete') || t.includes('remove')) return 'delete';
+  if (t.includes('update') || t.includes('edit') || t.includes('change') || t.includes('set')) return 'update';
+  return 'other';
+}
+
+function kindColor(kind) {
+  return { create: '#3ecf8e', update: '#7a9aff', delete: '#ef7070', other: '#7a788f' }[kind] || '#7a788f';
+}
+
+function friendlyEventType(type) {
+  if (!type) return 'Cambio';
+  return type
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatTime(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts * 1000);
+  return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }) + ' · ' +
+         d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+}
+
+function parseExtraData(extra) {
+  if (!extra) return [];
+  let obj = extra;
+  if (typeof extra === 'string') {
+    try { obj = JSON.parse(extra); } catch { return []; }
+  }
+  const rows = [];
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === 'old_value' || k === 'new_value') continue;
+    if (typeof v === 'object' && v !== null && 'old_value' in v) {
+      rows.push({ field: k, old: String(v.old_value ?? '—'), new: String(v.new_value ?? '—') });
+    } else {
+      rows.push({ field: k, old: null, new: String(v) });
+    }
+  }
+  return rows;
+}
+
+function renderItem(item, index) {
+  const kind = getEventKind(item.event_type);
+  const color = kindColor(kind);
+  const rows = parseExtraData(item.extra_data);
+
+  let diffHtml = '';
+  if (rows.length > 0) {
+    diffHtml = `<table class="diff-table">
+      <thead><tr><th>Campo</th><th>Antes</th><th>Después</th></tr></thead>
+      <tbody>` +
+      rows.map(r => `<tr>
+        <td>${r.field}</td>
+        <td>${r.old !== null ? `<span class="val-old">${r.old}</span>` : '<span style="color:var(--muted2)">—</span>'}</td>
+        <td>${r.old !== null ? `<span class="val-new">${r.new}</span>` : `<span style="color:var(--muted)">${r.new}</span>`}</td>
+      </tr>`).join('') +
+      `</tbody></table>`;
+  } else {
+    diffHtml = `<span style="font-family:var(--font-mono);font-size:11px;color:var(--muted2)">Sin detalles adicionales disponibles.</span>`;
+  }
+
+  return `<div class="activity-item" onclick="toggleItem(this)" data-index="${index}">
+    <div class="event-dot" style="background:${color};box-shadow:0 0 6px ${color}55;"></div>
+    <div class="event-body">
+      <div class="event-name">${item.object_name || item.object_id || 'Sin nombre'}</div>
+      <div class="event-detail">
+        <span class="event-badge badge-${kind}">${kind === 'other' ? 'cambio' : kind === 'create' ? 'creado' : kind === 'update' ? 'actualizado' : 'eliminado'}</span>
+        <span>${friendlyEventType(item.event_type)}</span>
+        ${item.actor_name ? `<span style="color:var(--muted2)">por ${item.actor_name}</span>` : ''}
+      </div>
+      <div class="event-expanded">${diffHtml}</div>
+    </div>
+    <div class="event-time">${formatTime(item.event_time)}</div>
+  </div>`;
+}
+
+function toggleItem(el) {
+  el.classList.toggle('open');
+}
+
+function renderFiltered() {
+  const search = document.getElementById('search-input').value.toLowerCase();
+  const typeF = document.getElementById('type-filter').value;
+  const list = document.getElementById('activity-list');
+  const empty = document.getElementById('empty-state');
+
+  const filtered = allData.filter(item => {
+    const name = (item.object_name || item.object_id || '').toLowerCase();
+    const etype = (item.event_type || '').toLowerCase();
+    const matchSearch = !search || name.includes(search) || etype.includes(search);
+    const kind = getEventKind(item.event_type);
+    const matchType = !typeF || kind === typeF;
+    return matchSearch && matchType;
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+    list.innerHTML = filtered.map((item, i) => renderItem(item, i)).join('');
+  }
+}
+
+async function fetchActivity() {
+  const token = document.getElementById('token-input').value.trim();
+  const account = document.getElementById('account-input').value.trim();
+  const days = parseInt(document.getElementById('period-select').value);
+  const limit = document.getElementById('limit-select').value;
+
+  if (!token || !account) {
+    showError('Por favor ingresa el Access Token y el ID de la cuenta.');
+    return;
+  }
+
+  const accountId = account.startsWith('act_') ? account : 'act_' + account;
+  const since = Math.floor(Date.now() / 1000) - days * 86400;
+  const until = Math.floor(Date.now() / 1000);
+
+  setLoading(true);
+  hideError();
+
+  const fields = 'event_type,object_id,object_name,event_time,extra_data,actor_name';
+  const url = `https://graph.facebook.com/v19.0/${accountId}/activities?fields=${fields}&since=${since}&until=${until}&limit=${limit}&access_token=${token}`;
+
+  try {
+    const res = await fetch(url);
+    const json = await res.json();
+
+    if (json.error) {
+      showError(`Error de Meta API: ${json.error.message} (código ${json.error.code})`);
+      setLoading(false);
+      return;
+    }
+
+    allData = json.data || [];
+
+    if (allData.length === 0) {
+      showError('No se encontraron actividades en el período seleccionado. Prueba con un rango más amplio.');
+      setLoading(false);
+      return;
+    }
+
+    // Stats
+    const creates = allData.filter(x => getEventKind(x.event_type) === 'create').length;
+    const updates = allData.filter(x => getEventKind(x.event_type) === 'update').length;
+    const deletes = allData.filter(x => getEventKind(x.event_type) === 'delete').length;
+
+    document.getElementById('s-total').textContent = allData.length;
+    document.getElementById('s-create').textContent = creates;
+    document.getElementById('s-update').textContent = updates;
+    document.getElementById('s-delete').textContent = deletes;
+
+    document.getElementById('stats-bar').style.display = 'grid';
+    document.getElementById('filters-row').style.display = 'flex';
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('export-row').style.display = 'flex';
+    document.getElementById('results-label').textContent =
+      `${allData.length} cambios · últimos ${days} días`;
+
+    renderFiltered();
+
+  } catch (e) {
+    showError('Error de red: ' + e.message + '. Verifica tu conexión o el token.');
+  }
+
+  setLoading(false);
+}
+
+function setLoading(v) {
+  document.getElementById('loader').style.display = v ? 'flex' : 'none';
+  document.getElementById('fetch-btn').disabled = v;
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-box');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideError() {
+  document.getElementById('error-box').style.display = 'none';
+}
+
+function exportCSV() {
+  const headers = ['event_type', 'object_name', 'object_id', 'actor_name', 'event_time'];
+  const rows = allData.map(item =>
+    headers.map(h => {
+      let v = h === 'event_time' ? formatTime(item[h]) : (item[h] || '');
+      return `"${String(v).replace(/"/g, '""')}"`;
+    }).join(',')
+  );
+  const csv = [headers.join(','), ...rows].join('\n');
+  download('meta_ads_actividad.csv', 'text/csv', csv);
+}
+
+function exportJSON() {
+  download('meta_ads_actividad.json', 'application/json', JSON.stringify(allData, null, 2));
+}
+
+function download(filename, type, content) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = filename;
+  a.click();
+}
+</script>
+</body>
+</html>
