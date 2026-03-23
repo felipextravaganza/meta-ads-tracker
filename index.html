@@ -592,6 +592,7 @@ function formatBudget(val) {
 }
 
 // ── Extraer campos relevantes del extra_data ──────────────────────────────
+// ── Extraer campos relevantes del extra_data ──────────────────────────────
 function parseExtraData(extra, isBudgetEvent) {
   if (!extra) return [];
   let obj = extra;
@@ -607,35 +608,57 @@ function parseExtraData(extra, isBudgetEvent) {
     start_time:      'Inicio',
     end_time:        'Fin',
   };
-
-  // Campos a ignorar (técnicos / ruido)
-  const SKIP = ['type', 'last_learning_exit', 'composite_data', 'id', 'account_id'];
+  const SKIP = ['type', 'last_learning_exit', 'id', 'account_id'];
 
   const rows = [];
-  for (const [k, v] of Object.entries(obj)) {
-    if (SKIP.includes(k)) continue;
-    if (k === 'old_value' || k === 'new_value') continue;
 
-    const label = FIELD_LABELS[k] || k.replace(/_/g, ' ');
-    const isBudgetField = k.includes('budget') || k.includes('bid');
-
-    if (typeof v === 'object' && v !== null && 'old_value' in v) {
-      const oldVal = isBudgetField ? formatBudget(v.old_value) : String(v.old_value ?? '—');
-      const newVal = isBudgetField ? formatBudget(v.new_value) : String(v.new_value ?? '—');
-      rows.push({ field: label, old: oldVal, new: newVal });
-    } else if (typeof v !== 'object') {
-      const displayVal = isBudgetField ? formatBudget(v) : String(v);
-      rows.push({ field: label, old: null, new: displayVal });
+  // Caso composite_data: Meta a veces anida los cambios dentro de esta clave
+  if (obj.composite_data && typeof obj.composite_data === 'object') {
+    const inner = obj.composite_data;
+    for (const [k, v] of Object.entries(inner)) {
+      if (SKIP.includes(k)) continue;
+      const label = FIELD_LABELS[k] || k.replace(/_/g, ' ');
+      const isBF = k.includes('budget') || k.includes('bid');
+      if (typeof v === 'object' && v !== null && 'old_value' in v) {
+        rows.push({ field: label, old: isBF ? formatBudget(v.old_value) : String(v.old_value ?? '—'), new: isBF ? formatBudget(v.new_value) : String(v.new_value ?? '—') });
+      } else if (typeof v !== 'object') {
+        rows.push({ field: label, old: null, new: isBF ? formatBudget(v) : String(v) });
+      }
     }
+    if (rows.length > 0) return rows;
   }
 
-  // Si es evento de presupuesto y no encontramos filas con old/new,
-  // buscar en la raíz del objeto las claves daily_budget / lifetime_budget
-  if (isBudgetEvent && rows.length === 0) {
-    for (const k of ['daily_budget', 'lifetime_budget', 'bid_amount']) {
-      if (obj[k] !== undefined) {
-        rows.push({ field: FIELD_LABELS[k] || k, old: null, new: formatBudget(obj[k]) });
+  // Caso array de cambios: [{ field, old_value, new_value }]
+  if (Array.isArray(obj)) {
+    for (const entry of obj) {
+      if (!entry || typeof entry !== 'object') continue;
+      const k = entry.field || entry.name || entry.key || '';
+      if (SKIP.includes(k)) continue;
+      const label = FIELD_LABELS[k] || k.replace(/_/g, ' ');
+      const isBF = k.includes('budget') || k.includes('bid');
+      const oldV = entry.old_value ?? entry.previous_value ?? null;
+      const newV = entry.new_value ?? entry.value ?? null;
+      if (oldV !== null || newV !== null) {
+        rows.push({
+          field: label || 'Campo',
+          old: oldV !== null ? (isBF ? formatBudget(oldV) : String(oldV)) : null,
+          new: newV !== null ? (isBF ? formatBudget(newV) : String(newV)) : '—'
+        });
       }
+    }
+    if (rows.length > 0) return rows;
+  }
+
+  // Caso plano: { daily_budget: { old_value, new_value } }
+  for (const [k, v] of Object.entries(obj)) {
+    if (SKIP.includes(k)) continue;
+    if (k === 'old_value' || k === 'new_value' || k === 'composite_data') continue;
+    const label = FIELD_LABELS[k] || k.replace(/_/g, ' ');
+    const isBF = k.includes('budget') || k.includes('bid');
+    if (typeof v === 'object' && v !== null && 'old_value' in v) {
+      rows.push({ field: label, old: isBF ? formatBudget(v.old_value) : String(v.old_value ?? '—'), new: isBF ? formatBudget(v.new_value) : String(v.new_value ?? '—') });
+    } else if (typeof v !== 'object') {
+      rows.push({ field: label, old: null, new: isBF ? formatBudget(v) : String(v) });
     }
   }
 
@@ -651,6 +674,13 @@ function renderItem(item, index) {
   const icon = CAT_ICON[cls.category] || '•';
   const parentName = parentMap[item.object_id] || null;
 
+  // Preparar JSON crudo para debug (siempre disponible)
+  let rawJson = '';
+  try {
+    const raw = typeof item.extra_data === 'string' ? JSON.parse(item.extra_data) : item.extra_data;
+    rawJson = JSON.stringify(raw, null, 2);
+  } catch { rawJson = String(item.extra_data || '{}'); }
+
   let diffHtml = '';
   if (rows.length > 0) {
     diffHtml = `<table class="diff-table">
@@ -662,7 +692,9 @@ function renderItem(item, index) {
         <td>${r.old !== null ? `<span class="val-new">${r.new}</span>` : `<span style="color:var(--muted)">${r.new}</span>`}</td>
       </tr>`).join('') + `</tbody></table>`;
   } else {
-    diffHtml = `<span style="font-family:var(--font-mono);font-size:11px;color:var(--muted2)">Sin detalles adicionales.</span>`;
+    // Mostrar JSON crudo para diagnosticar
+    diffHtml = `<div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-bottom:6px;">Sin detalles parseados — datos crudos de Meta:</div>
+      <pre style="font-family:var(--font-mono);font-size:10px;color:var(--muted2);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">${rawJson}</pre>`;
   }
 
   return `<div class="activity-item" onclick="toggleItem(this)" data-index="${index}">
