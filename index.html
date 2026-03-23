@@ -525,108 +525,120 @@
 
 <script>
 let allData = [];
+let parentMap = {};  // adset_id → campaign name
+let _token = '';
 
 // ── Categorías relevantes ──────────────────────────────────────────────────
-// Cada entrada: { match: fn(eventType) => bool, label, category, kind }
 const RELEVANT_EVENTS = [
-  // Campañas
-  { match: t => t === 'create_campaign',          label: 'Nueva campaña creada',        category: 'campaña',   kind: 'create' },
+  { match: t => t === 'create_campaign',          label: 'Nueva campaña creada',        category: 'campaña',  kind: 'create' },
   { match: t => t === 'update_campaign_run_status' || t === 'update_campaign_status', label: 'Campaña activada / pausada', category: 'campaña', kind: 'toggle' },
-  // Conjuntos de anuncios
-  { match: t => t === 'create_ad_set',            label: 'Nuevo conjunto creado',       category: 'conjunto',  kind: 'create' },
+  { match: t => t === 'create_ad_set',            label: 'Nuevo conjunto creado',       category: 'conjunto', kind: 'create' },
   { match: t => t === 'update_ad_set_run_status' || t === 'update_adset_status', label: 'Conjunto activado / pausado', category: 'conjunto', kind: 'toggle' },
   { match: t => t === 'update_ad_set_budget' || t === 'update_adset_budget' || (t.includes('adset') && t.includes('budget')) || (t.includes('ad_set') && t.includes('budget')), label: 'Presupuesto actualizado', category: 'conjunto', kind: 'update' },
-  { match: t => t.includes('targeting') || t.includes('audience') || t.includes('publico'), label: 'Público actualizado', category: 'conjunto', kind: 'update' },
-  // Anuncios
-  { match: t => t === 'create_ad',                label: 'Nuevo anuncio creado',        category: 'anuncio',   kind: 'create' },
+  { match: t => t.includes('targeting') || t.includes('audience'), label: 'Público actualizado', category: 'conjunto', kind: 'update' },
+  { match: t => t === 'create_ad',                label: 'Nuevo anuncio creado',        category: 'anuncio',  kind: 'create' },
   { match: t => t === 'update_ad_run_status' || t === 'update_ad_status', label: 'Anuncio activado / pausado', category: 'anuncio', kind: 'toggle' },
 ];
 
-// Palabras clave adicionales para capturar variaciones no documentadas
-const BUDGET_KEYWORDS  = ['budget', 'presupuesto', 'spend', 'bid', 'daily', 'lifetime'];
+const BUDGET_KEYWORDS   = ['budget', 'presupuesto', 'spend', 'bid', 'daily', 'lifetime'];
 const AUDIENCE_KEYWORDS = ['targeting', 'audience', 'custom_audience', 'lookalike', 'geo', 'age', 'gender', 'placement', 'interest'];
 const STATUS_KEYWORDS   = ['status', 'run_status', 'active', 'paused', 'enabled', 'disabled'];
 
 function classifyEvent(item) {
   const t = (item.event_type || '').toLowerCase();
-  const isHuman = !!item.actor_name; // Meta no pone actor_name en cambios automáticos
-
-  // Excluir cambios automáticos de Meta (sin actor humano)
-  if (!isHuman) return null;
-
-  // Probar reglas exactas primero
-  for (const rule of RELEVANT_EVENTS) {
-    if (rule.match(t)) return rule;
-  }
-
-  // Fallback: detectar por palabras clave en el event_type
-  const isCreate = t.startsWith('create_');
-  const isUpdate = t.startsWith('update_') || t.startsWith('edit_');
-  const isCampaign  = t.includes('campaign');
-  const isAdSet     = t.includes('ad_set') || t.includes('adset');
-  const isAd        = t.includes('_ad') && !isAdSet && !isCampaign;
-  const isBudget    = BUDGET_KEYWORDS.some(k => t.includes(k));
-  const isAudience  = AUDIENCE_KEYWORDS.some(k => t.includes(k));
-  const isStatus    = STATUS_KEYWORDS.some(k => t.includes(k));
-
+  if (!item.actor_name) return null;
+  for (const rule of RELEVANT_EVENTS) { if (rule.match(t)) return rule; }
+  const isCreate = t.startsWith('create_'), isUpdate = t.startsWith('update_') || t.startsWith('edit_');
+  const isCampaign = t.includes('campaign'), isAdSet = t.includes('ad_set') || t.includes('adset');
+  const isAd = t.includes('_ad') && !isAdSet && !isCampaign;
+  const isBudget = BUDGET_KEYWORDS.some(k => t.includes(k));
+  const isAudience = AUDIENCE_KEYWORDS.some(k => t.includes(k));
+  const isStatus = STATUS_KEYWORDS.some(k => t.includes(k));
   if (isCreate && isCampaign)  return { label: 'Nueva campaña creada',    category: 'campaña',  kind: 'create' };
   if (isCreate && isAdSet)     return { label: 'Nuevo conjunto creado',   category: 'conjunto', kind: 'create' };
   if (isCreate && isAd)        return { label: 'Nuevo anuncio creado',    category: 'anuncio',  kind: 'create' };
   if (isUpdate && isBudget)    return { label: 'Presupuesto actualizado', category: 'conjunto', kind: 'update' };
   if (isUpdate && isAudience)  return { label: 'Público actualizado',     category: 'conjunto', kind: 'update' };
   if (isUpdate && isStatus)    return { label: 'Activado / pausado',      category: isCampaign ? 'campaña' : isAdSet ? 'conjunto' : 'anuncio', kind: 'toggle' };
-
-  // No es relevante
   return null;
 }
 
-const KIND_COLOR = {
-  create: '#3ecf8e',
-  update: '#7a9aff',
-  toggle: '#f5a623',
-  delete: '#ef7070',
-};
-const KIND_LABEL = {
-  create: 'creado',
-  update: 'actualizado',
-  toggle: 'estado',
-  delete: 'eliminado',
-};
-const CAT_ICON = { campaña: '📢', conjunto: '🎯', anuncio: '🖼' };
+const KIND_COLOR = { create: '#3ecf8e', update: '#7a9aff', toggle: '#f5a623', delete: '#ef7070' };
+const KIND_LABEL = { create: 'creado', update: 'actualizado', toggle: 'estado', delete: 'eliminado' };
+const CAT_ICON   = { campaña: '📢', conjunto: '🎯', anuncio: '🖼' };
 
+// ── Fix fecha: acepta Unix timestamp (number) o string ISO ─────────────────
 function formatTime(ts) {
   if (!ts) return '—';
-  const d = new Date(ts * 1000);
-  return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }) + ' · ' +
-         d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+  let d;
+  if (typeof ts === 'number') {
+    d = new Date(ts * 1000);
+  } else {
+    // ISO string como "2026-03-21T14:32:00+0000"
+    d = new Date(ts);
+  }
+  if (isNaN(d.getTime())) return String(ts);
+  return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }) +
+    ' · ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
 }
 
-function parseExtraData(extra) {
+// ── Formatear monto de presupuesto (Meta lo guarda en centavos) ────────────
+function formatBudget(val) {
+  if (val === null || val === undefined || val === '—') return '—';
+  const n = parseFloat(val);
+  if (isNaN(n)) return String(val);
+  // Meta guarda centavos para CLP no tiene decimales, pero por si acaso
+  return '$' + (n / 100).toLocaleString('es-CL', { minimumFractionDigits: 0 });
+}
+
+// ── Extraer campos relevantes del extra_data ──────────────────────────────
+function parseExtraData(extra, isBudgetEvent) {
   if (!extra) return [];
   let obj = extra;
   if (typeof extra === 'string') { try { obj = JSON.parse(extra); } catch { return []; } }
-  const rows = [];
-  // Labels amigables para campos comunes
+
   const FIELD_LABELS = {
-    daily_budget: 'Presupuesto diario',
+    daily_budget:    'Presupuesto diario',
     lifetime_budget: 'Presupuesto total',
-    bid_amount: 'Puja',
-    status: 'Estado',
-    run_status: 'Estado',
-    name: 'Nombre',
-    targeting: 'Targeting',
-    start_time: 'Inicio',
-    end_time: 'Fin',
+    bid_amount:      'Puja',
+    status:          'Estado',
+    run_status:      'Estado',
+    name:            'Nombre',
+    start_time:      'Inicio',
+    end_time:        'Fin',
   };
+
+  // Campos a ignorar (técnicos / ruido)
+  const SKIP = ['type', 'last_learning_exit', 'composite_data', 'id', 'account_id'];
+
+  const rows = [];
   for (const [k, v] of Object.entries(obj)) {
+    if (SKIP.includes(k)) continue;
     if (k === 'old_value' || k === 'new_value') continue;
+
     const label = FIELD_LABELS[k] || k.replace(/_/g, ' ');
+    const isBudgetField = k.includes('budget') || k.includes('bid');
+
     if (typeof v === 'object' && v !== null && 'old_value' in v) {
-      rows.push({ field: label, old: String(v.old_value ?? '—'), new: String(v.new_value ?? '—') });
-    } else {
-      rows.push({ field: label, old: null, new: String(v) });
+      const oldVal = isBudgetField ? formatBudget(v.old_value) : String(v.old_value ?? '—');
+      const newVal = isBudgetField ? formatBudget(v.new_value) : String(v.new_value ?? '—');
+      rows.push({ field: label, old: oldVal, new: newVal });
+    } else if (typeof v !== 'object') {
+      const displayVal = isBudgetField ? formatBudget(v) : String(v);
+      rows.push({ field: label, old: null, new: displayVal });
     }
   }
+
+  // Si es evento de presupuesto y no encontramos filas con old/new,
+  // buscar en la raíz del objeto las claves daily_budget / lifetime_budget
+  if (isBudgetEvent && rows.length === 0) {
+    for (const k of ['daily_budget', 'lifetime_budget', 'bid_amount']) {
+      if (obj[k] !== undefined) {
+        rows.push({ field: FIELD_LABELS[k] || k, old: null, new: formatBudget(obj[k]) });
+      }
+    }
+  }
+
   return rows;
 }
 
@@ -634,8 +646,10 @@ function renderItem(item, index) {
   const cls = classifyEvent(item);
   if (!cls) return '';
   const color = KIND_COLOR[cls.kind] || '#7a788f';
-  const rows = parseExtraData(item.extra_data);
+  const isBudgetEvent = cls.label.includes('Presupuesto');
+  const rows = parseExtraData(item.extra_data, isBudgetEvent);
   const icon = CAT_ICON[cls.category] || '•';
+  const parentName = parentMap[item.object_id] || null;
 
   let diffHtml = '';
   if (rows.length > 0) {
@@ -655,8 +669,9 @@ function renderItem(item, index) {
     <div class="event-dot" style="background:${color};box-shadow:0 0 6px ${color}55;margin-top:6px;"></div>
     <div class="event-body">
       <div class="event-name">${item.object_name || item.object_id || 'Sin nombre'}</div>
+      ${parentName ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-bottom:4px;">📢 ${parentName}</div>` : ''}
       <div class="event-detail">
-        <span class="event-badge badge-${cls.kind === 'toggle' ? 'other' : cls.kind}" style="background:${color}22;color:${color};">${KIND_LABEL[cls.kind]}</span>
+        <span class="event-badge" style="background:${color}22;color:${color};">${KIND_LABEL[cls.kind]}</span>
         <span>${icon} ${cls.label}</span>
         ${item.actor_name ? `<span style="color:var(--muted2)">por ${item.actor_name}</span>` : ''}
       </div>
@@ -667,17 +682,13 @@ function renderItem(item, index) {
 }
 
 function toggleItem(el) { el.classList.toggle('open'); }
-
-function getRelevant() {
-  return allData.filter(item => classifyEvent(item) !== null);
-}
+function getRelevant() { return allData.filter(item => classifyEvent(item) !== null); }
 
 function renderFiltered() {
   const search = document.getElementById('search-input').value.toLowerCase();
   const typeF  = document.getElementById('type-filter').value;
   const list   = document.getElementById('activity-list');
   const empty  = document.getElementById('empty-state');
-
   const filtered = getRelevant().filter(item => {
     const cls  = classifyEvent(item);
     const name = (item.object_name || item.object_id || '').toLowerCase();
@@ -685,13 +696,28 @@ function renderFiltered() {
     const matchType   = !typeF  || cls.category === typeF || cls.kind === typeF;
     return matchSearch && matchType;
   });
+  if (filtered.length === 0) { list.innerHTML = ''; empty.style.display = 'block'; }
+  else { empty.style.display = 'none'; list.innerHTML = filtered.map((item, i) => renderItem(item, i)).join(''); }
+}
 
-  if (filtered.length === 0) {
-    list.innerHTML = '';
-    empty.style.display = 'block';
-  } else {
-    empty.style.display = 'none';
-    list.innerHTML = filtered.map((item, i) => renderItem(item, i)).join('');
+// ── Buscar nombre de campaña padre para cada adset ─────────────────────────
+async function enrichParents(adsetIds, token) {
+  if (!adsetIds.length) return;
+  // Consultar en lotes de 50
+  const chunks = [];
+  for (let i = 0; i < adsetIds.length; i += 50) chunks.push(adsetIds.slice(i, i + 50));
+  for (const chunk of chunks) {
+    try {
+      const ids = chunk.join(',');
+      const url = `https://graph.facebook.com/v19.0/?ids=${ids}&fields=id,name,campaign{name}&access_token=${token}`;
+      const res  = await fetch(url);
+      const json = await res.json();
+      for (const [id, data] of Object.entries(json)) {
+        if (data && data.campaign && data.campaign.name) {
+          parentMap[id] = data.campaign.name;
+        }
+      }
+    } catch(e) { /* silencioso, no bloquear */ }
   }
 }
 
@@ -703,11 +729,13 @@ async function fetchActivity() {
 
   if (!token || !account) { showError('Por favor ingresa el Access Token y el ID de la cuenta.'); return; }
 
+  _token = token;
   const accountId = account.startsWith('act_') ? account : 'act_' + account;
   const since = Math.floor(Date.now() / 1000) - days * 86400;
   const until = Math.floor(Date.now() / 1000);
 
   setLoading(true); hideError();
+  document.getElementById('loader-text').textContent = 'Consultando la API de Meta...';
 
   const fields = 'event_type,object_id,object_name,event_time,extra_data,actor_name';
   const url = `https://graph.facebook.com/v19.0/${accountId}/activities?fields=${fields}&since=${since}&until=${until}&limit=${limit}&access_token=${token}`;
@@ -716,20 +744,24 @@ async function fetchActivity() {
     const res  = await fetch(url);
     const json = await res.json();
 
-    if (json.error) {
-      showError(`Error de Meta API: ${json.error.message} (código ${json.error.code})`);
-      setLoading(false); return;
-    }
+    if (json.error) { showError(`Error de Meta API: ${json.error.message} (código ${json.error.code})`); setLoading(false); return; }
 
     allData = json.data || [];
     const relevant = getRelevant();
 
     if (relevant.length === 0) {
-      showError('No se encontraron cambios humanos relevantes en el período. Meta filtró todo como automático, o no hubo actividad manual.');
+      showError('No se encontraron cambios humanos relevantes. Prueba con un rango más amplio.');
       setLoading(false); return;
     }
 
-    // Stats sobre los eventos relevantes
+    // Buscar campañas padre para conjuntos de anuncios
+    document.getElementById('loader-text').textContent = 'Obteniendo jerarquía de campañas...';
+    parentMap = {};
+    const adsetItems = relevant.filter(x => classifyEvent(x).category === 'conjunto');
+    const adsetIds = [...new Set(adsetItems.map(x => x.object_id).filter(Boolean))];
+    await enrichParents(adsetIds, token);
+
+    // Stats
     const creates = relevant.filter(x => classifyEvent(x).kind === 'create').length;
     const updates = relevant.filter(x => classifyEvent(x).kind === 'update').length;
     const toggles = relevant.filter(x => classifyEvent(x).kind === 'toggle').length;
