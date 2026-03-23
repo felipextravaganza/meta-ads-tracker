@@ -582,16 +582,31 @@ function formatTime(ts) {
     ' · ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
 }
 
-// ── Formatear monto de presupuesto (Meta lo guarda en centavos) ────────────
-function formatBudget(val) {
+// ── Formatear monto con moneda original ───────────────────────────────────
+function formatMoney(val, currency) {
   if (val === null || val === undefined || val === '—') return '—';
   const n = parseFloat(val);
   if (isNaN(n)) return String(val);
-  // Meta guarda centavos para CLP no tiene decimales, pero por si acaso
-  return '$' + (n / 100).toLocaleString('es-CL', { minimumFractionDigits: 0 });
+  // Meta guarda montos en centavos
+  const amount = n / 100;
+  const cur = (currency || 'USD').toUpperCase();
+  // Formatear según moneda
+  try {
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: cur,
+      minimumFractionDigits: cur === 'CLP' ? 0 : 2,
+      maximumFractionDigits: cur === 'CLP' ? 0 : 2,
+    }).format(amount);
+  } catch {
+    // Fallback si la moneda no es reconocida por Intl
+    return `${cur} ${amount.toLocaleString('es-CL')}`;
+  }
 }
 
-// ── Extraer campos relevantes del extra_data ──────────────────────────────
+// Alias para compatibilidad con código existente
+function formatBudget(val) { return formatMoney(val, 'USD'); }
+
 // ── Extraer campos relevantes del extra_data ──────────────────────────────
 function parseExtraData(extra, isBudgetEvent) {
   if (!extra) return [];
@@ -612,7 +627,27 @@ function parseExtraData(extra, isBudgetEvent) {
 
   const rows = [];
 
-  // Caso composite_data: Meta a veces anida los cambios dentro de esta clave
+  // ── Formato composite_data de Meta (el más común para presupuestos) ───
+  // Estructura: { old_value: { type, currency, old_value: 1500, additional_value: "por día" },
+  //               new_value: { type, currency, new_value: 1700, additional_value: "por día" },
+  //               type: "composite_data" }
+  if (obj.type === 'composite_data' && obj.old_value && obj.new_value) {
+    const oldObj = typeof obj.old_value === 'object' ? obj.old_value : {};
+    const newObj = typeof obj.new_value === 'object' ? obj.new_value : {};
+    const currency = oldObj.currency || newObj.currency || 'USD';
+    const oldAmt = oldObj.old_value ?? oldObj.value ?? null;
+    const newAmt = newObj.new_value ?? newObj.value ?? null;
+    const period = newObj.additional_value || oldObj.additional_value || '';
+    const label = period ? `Presupuesto ${period}` : 'Presupuesto';
+    rows.push({
+      field: label,
+      old: oldAmt !== null ? formatMoney(oldAmt, currency) : '—',
+      new: newAmt !== null ? formatMoney(newAmt, currency) : '—',
+    });
+    return rows;
+  }
+
+  // ── composite_data anidado bajo clave propia ──────────────────────────
   if (obj.composite_data && typeof obj.composite_data === 'object') {
     const inner = obj.composite_data;
     for (const [k, v] of Object.entries(inner)) {
